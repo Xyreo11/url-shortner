@@ -81,3 +81,4 @@ console.log(normalizedUrl);
 const shortCode = generateShortCode();
 console.log("Shortened URL: https://nik.hil/" + shortCode);
 
+
