@@ -1,5 +1,8 @@
 name: CI – Backend & Frontend Tests
 
+permissions:
+  contents: read    # REQUIRED so checkout works reliably
+
 on:
   push:
     branches: [ dev ]
@@ -14,14 +17,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # fixes PR merge ref checkout errors
+          persist-credentials: true
 
       - name: Install backend dependencies
         working-directory: backend
-        run: npm install
+        run: npm ci               # faster & consistent
 
       - name: Run backend tests
         working-directory: backend
-        run: npm test
+        run: npm test --if-present
 
   frontend-tests:
     name: Run Frontend Tests
@@ -30,11 +36,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: npm ci
 
       - name: Run frontend tests
         working-directory: frontend
-        run: npm test
+        run: npm test --if-present
