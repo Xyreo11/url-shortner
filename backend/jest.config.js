@@ -1,19 +1,21 @@
 export default {
+  preset: "jest-environment-node",
   testEnvironment: "node",
-  clearMocks: true,
+
+  // Enable ESM support properly
   transform: {},
 
-  // Allow `.js` ESM imports
-  extensionsToTreatAsEsm: [],
+  // Treat JS files as ESM
+  extensionsToTreatAsEsm: [".js"],
 
-  // Workaround for ESM module resolution in Jest
+  // Fix ESM import resolution
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
 
-  // Test files pattern
   testMatch: ["**/?(*.)+(test).js"],
-  
+  clearMocks: true,
+
   collectCoverage: true,
   coverageDirectory: "coverage"
 };
