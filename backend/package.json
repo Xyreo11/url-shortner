@@ -9,9 +9,6 @@
     "dev": "nodemon src/index.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules && jest --runInBand"
   },
-  "jest": {
-    "experimentalVMModules": true
-  },
   "keywords": [],
   "author": "Nikhil",
   "license": "MIT",
