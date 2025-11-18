@@ -1,58 +1,36 @@
-import { URL } from "url";
+// src/utils/validator.js
 
-// -------------------------------
-// Validate URL structure
-// -------------------------------
-export function isValidUrl(str) {
+// Normalize input (your existing function)
+export function normalizeUrl(url) {
+  url = url.trim();
+
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = "https://" + url;
+  }
+  return url;
+}
+
+// Validate URL format
+export function isValidUrl(url) {
   try {
-    const url = new URL(str);
+    const u = new URL(url);
 
-    // Only allow http and https
-    if (!["http:", "https:"].includes(url.protocol)) {
-      return false;
-    }
+    if (!["http:", "https:"].includes(u.protocol)) return false;
+    if (!u.hostname || !u.hostname.includes(".")) return false;
+    if (u.hostname.length < 3) return false;
 
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
 
-// -------------------------------
-// Normalize URL
-// -------------------------------
-export function normalizeUrl(str) {
-  if (!str) throw new Error("URL is empty");
+// Validate alias format
+export function isValidAlias(alias) {
+  if (!alias) return true;
 
-  // Add protocol if missing
-  if (!str.startsWith("http://") && !str.startsWith("https://")) {
-    str = "https://" + str;
-  }
+  // Only alphanumeric, dash, underscore, 3–50 chars
+  const regex = /^[A-Za-z0-9\-_]{3,50}$/;
 
-  let url;
-
-  try {
-    url = new URL(str);
-  } catch (err) {
-    throw new Error("Invalid URL");
-  }
-
-  // Only domain should be lowercased, not the path
-  url.hostname = url.hostname.toLowerCase();
-
-  // Remove URL fragment (#something)
-  url.hash = "";
-
-  // Remove trailing slash (optional)
-  if (url.pathname !== "/" && url.pathname.endsWith("/")) {
-    url.pathname = url.pathname.slice(0, -1);
-  }
-
-  // Remove junk query params if you want (optional)
-  // Example: utm parameters (marketing tags)
-  // for (const p of url.searchParams.keys()) {
-  //   if (p.startsWith("utm_")) url.searchParams.delete(p);
-  // }
-
-  return url.toString();
+  return regex.test(alias);
 }
