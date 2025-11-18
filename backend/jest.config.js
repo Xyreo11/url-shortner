@@ -1,14 +1,11 @@
 export default {
-  preset: "jest-environment-node",
   testEnvironment: "node",
 
-  // Enable ESM support properly
+  // ESM support
   transform: {},
 
-  // Treat JS files as ESM
   extensionsToTreatAsEsm: [".js"],
 
-  // Fix ESM import resolution
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
