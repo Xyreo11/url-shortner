@@ -4,7 +4,7 @@ export default {
   // ESM support
   transform: {},
 
-  extensionsToTreatAsEsm: [".js"],
+  extensionsToTreatAsEsm: [],
 
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
@@ -16,3 +16,4 @@ export default {
   collectCoverage: true,
   coverageDirectory: "coverage"
 };
+
