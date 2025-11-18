@@ -1,0 +1,61 @@
+name: CI/CD – Deploy to Production
+
+on:
+  push:
+    branches: [ main ]   # Deploy when main updates
+  workflow_dispatch:      # Allow manual run
+
+jobs:
+  deploy:
+    name: Deploy to Production Server
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------
+      # 1. CHECKOUT CODE
+      # -----------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # 2. Setup SSH
+      # -----------------------------
+      - name: Configure SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # -----------------------------
+      # 3. Copy code to server
+      # -----------------------------
+      - name: Sync project files to server
+        run: |
+          rsync -az --delete \
+            -e "ssh -o StrictHostKeyChecking=no" \
+            ./ \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/home/${{ secrets.SERVER_USER }}/shortify
+
+      # -----------------------------
+      # 4. Build & Deploy with Docker Compose
+      # -----------------------------
+      - name: Deploy using Docker Compose
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          set -e
+
+          cd ~/shortify
+
+          echo "🛑 Stopping existing containers..."
+          docker compose down || true
+
+          echo "📦 Building fresh containers..."
+          docker compose build --no-cache
+
+          echo "🚀 Starting production stack..."
+          docker compose up -d
+
+          echo "🧹 Cleaning old images..."
+          docker system prune -af || true
+
+          echo "🎉 Deployment Complete!"
+          EOF

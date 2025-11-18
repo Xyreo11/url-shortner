@@ -1,0 +1,66 @@
+# -----------------------------------------------------
+# Node / Vite / React Standard GitIgnore
+# -----------------------------------------------------
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Production build
+dist/
+build/
+
+# Vite cache
+.vite/
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+
+# VSCode settings
+.vscode/
+*.code-workspace
+
+# Temporary files
+*.tmp
+*.temp
+
+# Local history / backups
+*.bak
+*.swp
+*.swo
+
+# Mac metadata
+._*
+
+# Windows metadata
+desktop.ini
+
+# Optional: Ignore lockfiles (if you want cleaner repo)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# -----------------------------------------------------
+# Project Specific Ignores (Safe)
+# -----------------------------------------------------
+
+# Vite dev server cache
+vite.config.time.json
+
+# Local storage mocks (if any)
+localStorage.json

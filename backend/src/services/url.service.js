@@ -1,5 +1,4 @@
 // src/services/url.service.js
-
 import { findByLongUrl, insertUrl, findByShortCode } from "../models/url.model.js";
 import { generateShortCode } from "../utils/hasher.js";
 import { cacheGet, cacheSet } from "../utils/cache.js";
@@ -10,7 +9,7 @@ import { normalizeUrl } from "../utils/validator.js";
 // --------------------------------------------------
 // CREATE / SHORTEN URL
 // --------------------------------------------------
-export async function shortenUrl(longUrl, alias, ip) {
+export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
   const allowed = await rateLimit(`rl:create:${ip}`, 10, 60);
   if (!allowed) throw new Error("Rate limit exceeded");
 
@@ -24,7 +23,7 @@ export async function shortenUrl(longUrl, alias, ip) {
     const existing = await findByShortCode(alias);
     if (existing) throw new Error("Alias already taken");
 
-    await insertUrl(longUrl, alias);
+    await insertUrl(longUrl, alias, ownerEmail);
     await cacheSet(`short:${alias}`, longUrl);
     return alias;
   }
@@ -40,11 +39,11 @@ export async function shortenUrl(longUrl, alias, ip) {
 
   const shortCode = generateShortCode(longUrl);
 
-  await insertUrl(longUrl, shortCode);
+  await insertUrl(longUrl, shortCode, ownerEmail);
   await cacheSet(`long:${longUrl}`, shortCode);
   await cacheSet(`short:${shortCode}`, longUrl);
 
-  console.log("Generated shortCode =", shortCode, "TYPE =", typeof shortCode);
+  console.log("Generated shortCode =", shortCode, "TYPE =", typeof shortCode, "ownerEmail=", ownerEmail);
 
   return shortCode;
 }

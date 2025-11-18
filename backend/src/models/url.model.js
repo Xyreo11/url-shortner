@@ -16,10 +16,10 @@ export async function findByShortCode(code) {
   return res.rows[0];
 }
 
-export async function insertUrl(longUrl, code) {
-  const res = await db.query(
-    "INSERT INTO urls (long_url, short_code) VALUES ($1, $2) RETURNING *",
-    [longUrl, code]
-  );
-  return res.rows[0];
+export async function insertUrl(longUrl, shortCode, ownerEmail = null) {
+  const query = `
+    INSERT INTO urls (long_url, short_code, owner_email)
+    VALUES ($1, $2, $3)
+  `;
+  await db.query(query, [longUrl, shortCode, ownerEmail]);
 }
