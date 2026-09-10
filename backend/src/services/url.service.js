@@ -7,6 +7,10 @@ import { isBlacklisted } from "../utils/blacklist.js";
 import { normalizeUrl, isValidUrl, isValidAlias } from "../utils/validator.js";
 import { config } from "../config/env.js";
 
+// Bounded so a pathological case cannot loop forever. With a 62^8 keyspace,
+// needing a second attempt is already vanishingly unlikely.
+const MAX_CODE_ATTEMPTS = 5;
+
 // --------------------------------------------------
 // CREATE / SHORTEN URL
 // --------------------------------------------------
@@ -41,32 +45,51 @@ export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
   }
 
   if (alias) {
-    const existing = await findByShortCode(alias);
-    if (existing) throw new Error("Alias already taken");
+    // No check-then-act. The previous version did findByShortCode then
+    // insertUrl, and two concurrent requests for the same alias both passed
+    // the check. The unique constraint arbitrates instead: no row back means
+    // somebody else already has it.
+    const claimed = await insertUrl(longUrl, alias, ownerEmail);
+    if (!claimed) throw new Error("Alias already taken");
 
-    await insertUrl(longUrl, alias, ownerEmail);
     await cacheSet(`short:${alias}`, longUrl);
     return alias;
   }
 
-  const cached = await cacheGet(`long:${longUrl}`);
+  // Dedupe is per owner, so the cache key must be too, or one user's link
+  // would be served to another from cache even after the SQL was scoped.
+  const dedupeKey = `long:${ownerEmail ?? "anon"}:${longUrl}`;
+
+  const cached = await cacheGet(dedupeKey);
   if (cached) return cached;
 
-  const existing = await findByLongUrl(longUrl);
+  const existing = await findByLongUrl(longUrl, ownerEmail);
   if (existing) {
     await cacheSet(`short:${existing.short_code}`, existing.long_url);
+    await cacheSet(dedupeKey, existing.short_code);
     return existing.short_code;
   }
 
-  const shortCode = generateShortCode(longUrl);
+  // Retry on code collision. generateShortCode is seeded with random bytes,
+  // so each attempt is genuinely different.
+  for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt++) {
+    const candidate = generateShortCode(longUrl);
+    const shortCode = await insertUrl(longUrl, candidate, ownerEmail);
 
-  await insertUrl(longUrl, shortCode, ownerEmail);
-  await cacheSet(`long:${longUrl}`, shortCode);
-  await cacheSet(`short:${shortCode}`, longUrl);
+    if (shortCode) {
+      await cacheSet(dedupeKey, shortCode);
+      await cacheSet(`short:${shortCode}`, longUrl);
+      return shortCode;
+    }
 
-  console.log("Generated shortCode =", shortCode, "TYPE =", typeof shortCode, "ownerEmail=", ownerEmail);
+    // The code was taken. That is almost always a genuine collision, but it
+    // can also mean a concurrent request for this same URL won the race, so
+    // check before burning another attempt.
+    const raced = await findByLongUrl(longUrl, ownerEmail);
+    if (raced) return raced.short_code;
+  }
 
-  return shortCode;
+  throw new Error("Could not allocate a short code, please try again");
 }
 
 // --------------------------------------------------
