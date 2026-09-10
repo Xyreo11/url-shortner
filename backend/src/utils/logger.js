@@ -1,7 +1,13 @@
 import winston from "winston";
 import "winston-daily-rotate-file";
+import { config } from "../config/env.js";
 
-const logDir = "logs";
+// Configurable rather than hardcoded to "logs" relative to the working
+// directory. On this machine the repository lives inside a OneDrive-synced
+// folder, and a rotating file written on every request means the sync client
+// wakes up mid-benchmark and injects latency that has nothing to do with the
+// code under test.
+const logDir = config.LOG_DIR;
 
 const dailyRotate = (filename) =>
   new winston.transports.DailyRotateFile({

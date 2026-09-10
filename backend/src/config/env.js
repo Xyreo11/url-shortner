@@ -105,4 +105,10 @@ export const config = {
   // How long a blacklist verdict stays cached. The Redis SET had no expiry at
   // all, so a hostname cached as allowed stayed allowed permanently.
   BLACKLIST_TTL_S: int("BLACKLIST_TTL_S", 600),
+
+  // Where winston writes its rotating files. Was hardcoded to "logs" relative
+  // to the working directory, which on this machine is inside a synced
+  // OneDrive folder; a per-request file write there means the sync client
+  // interferes with any measurement.
+  LOG_DIR: process.env.LOG_DIR || "logs",
 };
