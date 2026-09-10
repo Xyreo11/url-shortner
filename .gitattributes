@@ -1,0 +1,21 @@
+# Normalise line endings so a one-line change does not show up as a whole-file
+# diff. Without this, editing a CRLF-stored file on Linux tooling (or the
+# reverse) rewrites every line and buries the actual change.
+#
+# text=auto lets Git detect text files; eol=lf stores and checks them out with
+# LF on every platform. Windows editors handle LF fine.
+* text=auto eol=lf
+
+# Binary: must never be line-ending converted or the dump is corrupted.
+*.backup binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.pdf     binary
+*.woff    binary
+*.woff2   binary
+
+# Shell scripts must keep LF or they will not execute on Linux or in CI.
+*.sh text eol=lf
