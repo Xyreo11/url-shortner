@@ -14,7 +14,7 @@ function getEmailFromAuthHeader(req) {
     const auth = req.get("authorization") || "";
     if (!auth.startsWith("Bearer ")) return null;
     const token = auth.split(" ")[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET || config.JWT_SECRET);
+    const payload = jwt.verify(token, config.JWT_SECRET);
     return payload?.email || null;
   } catch {
     return null;
@@ -78,7 +78,7 @@ router.post("/shorten", async (req, res) => {
     const shortCode = await shortenUrl(url, alias, req.ip, ownerEmail);
 
     return res.json({
-      short_url: `${process.env.BASE_URL}/${shortCode}`,
+      short_url: `${config.BASE_URL}/${shortCode}`,
       shortCode,
     });
   } catch (err) {
@@ -117,7 +117,7 @@ router.get("/:code", async (req, res) => {
     // Deterministic IP hash
     const { createHash } = await import("crypto");
     const ipHash = createHash("sha256")
-      .update(ip + (process.env.IP_SALT || "static_salt"))
+      .update(ip + config.IP_SALT)
       .digest("hex");
 
     // Insert analytics row

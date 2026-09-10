@@ -5,12 +5,17 @@ import { cacheGet, cacheSet } from "../utils/cache.js";
 import { rateLimit } from "../utils/rateLimiter.js";
 import { isBlacklisted } from "../utils/blacklist.js";
 import { normalizeUrl } from "../utils/validator.js";
+import { config } from "../config/env.js";
 
 // --------------------------------------------------
 // CREATE / SHORTEN URL
 // --------------------------------------------------
 export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
-  const allowed = await rateLimit(`rl:create:${ip}`, 10, 60);
+  const allowed = await rateLimit(
+    `rl:create:${ip}`,
+    config.RATE_LIMIT_CREATE_MAX,
+    config.RATE_LIMIT_CREATE_WINDOW_S
+  );
   if (!allowed) throw new Error("Rate limit exceeded");
 
   longUrl = normalizeUrl(longUrl);

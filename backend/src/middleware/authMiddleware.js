@@ -12,7 +12,7 @@ const requireAuth = (req, res, next) => {
 
   try {
     const token = authHeader.split(" ")[1];
-    const payload = jwt.verify(token, process.env.JWT_SECRET || config.JWT_SECRET);
+    const payload = jwt.verify(token, config.JWT_SECRET);
 
     req.user = payload; // id, email, role
     next();

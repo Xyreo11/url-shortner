@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { findUserByEmail, insertUser } from "../models/user.model.js";
 import { config } from "../config/env.js";
 
-const SALT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || "12", 10);
+const SALT_ROUNDS = config.BCRYPT_ROUNDS;
 
 /* =======================================================
    REGISTER USER
@@ -44,8 +44,8 @@ export async function authenticateUser({ email, password }) {
 
   const token = jwt.sign(
     payload,
-    process.env.JWT_SECRET || config.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+    config.JWT_SECRET,
+    { expiresIn: config.JWT_EXPIRES_IN }
   );
 
   // 🔥 CRITICAL FIX: include avatar_url in returned user object

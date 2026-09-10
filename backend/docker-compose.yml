@@ -1,4 +1,8 @@
-version: "3.9"
+# Compose v2 infers the schema version, so the obsolete `version:` key is gone.
+#
+# Always run benchmark and throwaway stacks under an explicit project name so
+# volumes stay namespaced and existing ones are untouched:
+#   docker compose -p urlshort-bench up -d
 
 services:
   app:
@@ -6,15 +10,35 @@ services:
       context: .
       dockerfile: docker/Dockerfile.app
     environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      APP_NAME: ${APP_NAME:-shortify}
+      PORT: ${PORT:-3000}
+      BASE_URL: ${BASE_URL:-http://localhost:3000}
+
       POSTGRES_URL: ${POSTGRES_URL}
       REDIS_URL: ${REDIS_URL}
-      BASE_URL: ${BASE_URL}
-      PORT: ${PORT}
+
+      # Previously absent from this file entirely, so the containerised app
+      # signed tokens with an undefined secret and hashed visitor IPs with a
+      # hardcoded fallback salt. The app now refuses to boot in production
+      # without both.
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      IP_SALT: ${IP_SALT}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+
+      PG_POOL_MAX: ${PG_POOL_MAX:-10}
+      RATE_LIMIT_CREATE_MAX: ${RATE_LIMIT_CREATE_MAX:-10}
+      RATE_LIMIT_CREATE_WINDOW_S: ${RATE_LIMIT_CREATE_WINDOW_S:-60}
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
-      - redis
+      # The list form only orders startup. Waiting on health is what stops the
+      # app racing an unready database on a cold volume.
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
       - /app/node_modules
@@ -22,21 +46,34 @@ services:
   postgres:
     image: postgres:15
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-shortifydb}
     ports:
-      - "5433:5432"    # ← EXTERNAL 5433 → INTERNAL 5432 (FIXED)
+      # Host 5433 to avoid colliding with a local PostgreSQL on 5432.
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Runs ONLY on an empty data volume. Editing schema.sql after the volume
       # exists has no effect; recreate with `down -v` to reload it.
       - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      # $$ escapes for Compose so the shell inside the container expands these.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
 
 volumes:
   pgdata:

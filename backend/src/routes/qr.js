@@ -1,5 +1,6 @@
 import express from "express";
 import { generateQRCode } from "../utils/qrcode.js";
+import { config } from "../config/env.js";
 
 const router = express.Router();
 
@@ -9,7 +10,7 @@ router.get("/:code", async (req, res) => {
     const code = req.params.code;
 
     // Build the full short URL
-    const url = `${process.env.BASE_URL}/${code}`;
+    const url = `${config.BASE_URL}/${code}`;
 
     const qr = await generateQRCode(url);
 

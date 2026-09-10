@@ -1,43 +1,61 @@
 // src/index.js
+//
+// Process entry point: connect dependencies, listen, shut down cleanly.
+// Application wiring lives in src/app.js.
 
-import express from "express";
-import cors from "cors";
-
-import httpRouter from "./routes/http.js";
-import qrRouter from "./routes/qr.js";
-import analyticsRouter from "./routes/analytics.js";
-import authRouter from "./routes/auth.js";
-import userRouter from "./routes/user.js";
-
+import { createApp } from "./app.js";
 import { config } from "./config/env.js";
-import { logRequests } from "./middleware/requestLogger.js";
+import { closeDb } from "./config/db.js";
+import { connectRedis, closeRedis } from "./config/redis.js";
 
 const isCLI = process.argv.length > 2;
 
-if (!isCLI) {
-  const app = express();
-
-  app.set("trust proxy", true);
-
-  // Global middleware
-  app.use(express.json({ limit: "5mb" }));
-  app.use(cors({ origin: "*" }));
-  app.use(logRequests);
-
-  // API routes FIRST
-  app.use("/api/auth", authRouter);
-  app.use("/api/user", userRouter);
-  app.use("/analytics", analyticsRouter);
-  app.use("/qr", qrRouter);
-
-  app.use("/", httpRouter);
-
-  app.listen(config.PORT, () => {
-    console.log(`[${config.APP_NAME}] API running on port ${config.PORT}...`);
-  });
-
-} else {
+if (isCLI) {
   const url = process.argv[2];
   const alias = process.argv[3] || null;
-  import("./routes/cli.js").then(({ cliInput }) => cliInput(url, alias));
+  const { cliInput } = await import("./routes/cli.js");
+  await cliInput(url, alias);
+} else {
+  // Resolves even if Redis is unreachable, so the app still starts and serves
+  // from Postgres. /health reports the real state.
+  await connectRedis();
+
+  const app = createApp();
+
+  const server = app.listen(config.PORT, () => {
+    console.log(`[${config.APP_NAME}] listening on port ${config.PORT}`);
+  });
+
+  server.on("error", (err) => {
+    console.error("[server] failed to start:", err.message);
+    process.exit(1);
+  });
+
+  // Without this, a container stop kills in-flight requests and leaves
+  // pool connections open. It also gives buffered work a chance to drain.
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[${config.APP_NAME}] ${signal} received, shutting down`);
+
+    server.close(async () => {
+      try {
+        await closeRedis();
+        await closeDb();
+      } catch (err) {
+        console.error("[shutdown] error closing connections:", err.message);
+      }
+      process.exit(0);
+    });
+
+    // Do not hang forever on a stuck connection.
+    setTimeout(() => {
+      console.error("[shutdown] forced exit after timeout");
+      process.exit(1);
+    }, 10000).unref();
+  }
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
