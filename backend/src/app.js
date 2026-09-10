@@ -6,6 +6,7 @@
 
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 
 import httpRouter from "./routes/http.js";
 import qrRouter from "./routes/qr.js";
@@ -21,10 +22,33 @@ import { logRequests } from "./middleware/requestLogger.js";
 export function createApp() {
   const app = express();
 
-  app.set("trust proxy", true);
+  // Was unconditionally true, which meant any client could set
+  // X-Forwarded-For and pick its own rate-limit bucket and analytics IP hash.
+  app.set("trust proxy", config.TRUST_PROXY);
+
+  // Content-Security-Policy is disabled: this service returns 302s and JSON,
+  // never HTML it controls, and a default CSP would apply to error pages
+  // without protecting anything. The rest (HSTS, nosniff, frameguard,
+  // referrer policy) all apply.
+  app.use(helmet({ contentSecurityPolicy: false }));
 
   app.use(express.json({ limit: "5mb" }));
-  app.use(cors({ origin: "*" }));
+
+  app.use(
+    cors({
+      // An allowlist rather than "*". A wildcard lets any site on the
+      // internet call this API from a logged-in visitor's browser.
+      origin(origin, callback) {
+        // Requests with no Origin header are not browser cross-origin calls:
+        // curl, server-to-server, and the redirect path itself.
+        if (!origin) return callback(null, true);
+        if (config.CORS_ORIGINS.includes(origin)) return callback(null, true);
+        return callback(new Error("Not allowed by CORS"));
+      },
+      credentials: true,
+    })
+  );
+
   app.use(logRequests);
 
   // Must be registered before the catch-all router below, which matches any

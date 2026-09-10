@@ -40,6 +40,12 @@ function int(name, fallback) {
   return parsed;
 }
 
+function bool(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  return ["1", "true", "yes", "on"].includes(raw.toLowerCase());
+}
+
 export const config = {
   NODE_ENV,
   APP_NAME: process.env.APP_NAME || "shortify",
@@ -77,4 +83,20 @@ export const config = {
   // identically across benchmark phases instead of measuring 429s.
   RATE_LIMIT_CREATE_MAX: int("RATE_LIMIT_CREATE_MAX", 10),
   RATE_LIMIT_CREATE_WINDOW_S: int("RATE_LIMIT_CREATE_WINDOW_S", 60),
+
+  // Comma-separated allowlist. Previously cors({ origin: "*" }), which lets
+  // any site on the internet call this API from a visitor's browser.
+  CORS_ORIGINS: (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:3000")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+
+  // Off by default. It was unconditionally true, so any client could set
+  // X-Forwarded-For and choose its own rate-limit bucket and analytics IP
+  // hash. Enable it only when genuinely behind a proxy you control.
+  TRUST_PROXY: bool("TRUST_PROXY", false),
+
+  // How long a blacklist verdict stays cached. The Redis SET had no expiry at
+  // all, so a hostname cached as allowed stayed allowed permanently.
+  BLACKLIST_TTL_S: int("BLACKLIST_TTL_S", 600),
 };
