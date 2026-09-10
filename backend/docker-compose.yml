@@ -29,6 +29,9 @@ services:
       - "5433:5432"    # ← EXTERNAL 5433 → INTERNAL 5432 (FIXED)
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs ONLY on an empty data volume. Editing schema.sql after the volume
+      # exists has no effect; recreate with `down -v` to reload it.
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
 
   redis:
     image: redis:7
