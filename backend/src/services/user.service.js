@@ -1,13 +1,12 @@
 // src/services/user.service.js
 import bcrypt from "bcrypt";
 import { db } from "../config/db.js";
+import { config } from "../config/env.js";
 
 import {
-  findUserById,
   findUserAuthById,
   updateUserAvatar,
-  updateUserName,
-  updateUserEmail,
+  updateUserProfileFields,
   findUserByEmail,
 } from "../models/user.model.js";
 
@@ -21,12 +20,9 @@ export async function updateAvatar(id, avatarUrl) {
 // ------------------------------------------------------
 // Update Profile (name + email)
 // ------------------------------------------------------
-export async function updateUserProfile(id, body) {
-  const { name, email } = body;
-
+export async function updateUserProfile(id, { name, email }) {
   if (!name && !email) throw new Error("Nothing to update");
 
-  // If changing email, check if already exists
   if (email) {
     const existing = await findUserByEmail(email);
     if (existing && existing.id !== id) {
@@ -34,16 +30,11 @@ export async function updateUserProfile(id, body) {
     }
   }
 
-  if (name) {
-    await updateUserName(id, name);
-  }
-
-  if (email) {
-    await updateUserEmail(id, email);
-  }
-
-  // Return fresh updated user object
-  return await findUserById(id);
+  // One statement, and it returns the public columns, so there is no second
+  // SELECT that could pull the password hash back into the response.
+  const updated = await updateUserProfileFields(id, { name, email });
+  if (!updated) throw new Error("User not found");
+  return updated;
 }
 
 // ------------------------------------------------------
@@ -59,7 +50,10 @@ export async function updatePassword(id, oldPassword, newPassword) {
   if (!ok) return false;
 
   // Hash new password
-  const newHash = await bcrypt.hash(newPassword, 12);
+  // config.BCRYPT_ROUNDS, not a literal: auth.service already read the
+  // configured cost, so raising it would silently have skipped password
+  // changes and left those users on the old cost factor.
+  const newHash = await bcrypt.hash(newPassword, config.BCRYPT_ROUNDS);
 
   // Save to DB
   await db.query(

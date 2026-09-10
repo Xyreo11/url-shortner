@@ -29,8 +29,8 @@ export function isValidUrl(url) {
 export function isValidAlias(alias) {
   if (!alias) return true;
 
-  // Only alphanumeric, dash, underscore, 3–50 chars
-  const regex = /^[A-Za-z0-9\-_]{3,50}$/;
+  const regex =
+    /^(?!.*\.\.)(?!\.)(?!.*\.$)[A-Za-z0-9._-]{3,50}$/;
 
   return regex.test(alias);
 }

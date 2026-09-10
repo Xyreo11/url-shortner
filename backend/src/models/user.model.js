@@ -66,24 +66,27 @@ export async function updateUserAvatar(id, avatarUrl) {
   return res.rows[0];
 }
 
-export async function updateUserName(id, name) {
+/**
+ * Updates name and/or email in a single statement.
+ *
+ * Replaces separate updateUserName and updateUserEmail calls, which the
+ * service issued back to back with no transaction: if the second failed the
+ * first stayed committed, leaving a half-applied update. COALESCE leaves a
+ * column untouched when its parameter is null, so one round trip covers
+ * either field or both.
+ *
+ * Returns the public columns directly, so the caller never needs a follow-up
+ * SELECT. That follow-up SELECT is what leaked the password hash before.
+ */
+export async function updateUserProfileFields(id, { name, email }) {
   const res = await db.query(
     `UPDATE users
-     SET name = $1
-     WHERE id = $2
-     RETURNING id, email, name, role, avatar_url, created_at`,
-    [name, id]
+     SET name       = COALESCE($1, name),
+         email      = COALESCE($2, email),
+         updated_at = now()
+     WHERE id = $3
+     RETURNING ${PUBLIC_COLS}`,
+    [name ?? null, email ?? null, id]
   );
-  return res.rows[0];
-}
-
-export async function updateUserEmail(id, email) {
-  const res = await db.query(
-    `UPDATE users 
-     SET email = $1 
-     WHERE id = $2
-     RETURNING id, email, name, role, avatar_url, created_at`,
-    [email, id]
-  );
-  return res.rows[0];
+  return res.rows[0] || null;
 }

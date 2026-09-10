@@ -4,7 +4,7 @@ import { generateShortCode } from "../utils/hasher.js";
 import { cacheGet, cacheSet } from "../utils/cache.js";
 import { rateLimit } from "../utils/rateLimiter.js";
 import { isBlacklisted } from "../utils/blacklist.js";
-import { normalizeUrl } from "../utils/validator.js";
+import { normalizeUrl, isValidUrl, isValidAlias } from "../utils/validator.js";
 import { config } from "../config/env.js";
 
 // --------------------------------------------------
@@ -18,7 +18,23 @@ export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
   );
   if (!allowed) throw new Error("Rate limit exceeded");
 
+  if (typeof longUrl !== "string" || longUrl.trim() === "") {
+    throw new Error("A URL is required");
+  }
+
+  // isValidUrl and isValidAlias existed in utils/validator.js but were never
+  // imported anywhere, so any string at all was accepted as a destination and
+  // an alias could be any length or charset. Cheap in-process checks run
+  // before the blacklist and dedupe lookups, which both cost round trips.
+  if (alias !== undefined && alias !== null && alias !== "" && !isValidAlias(alias)) {
+    throw new Error("Invalid alias: use 3-50 characters from A-Z, 0-9, dot, dash or underscore");
+  }
+
   longUrl = normalizeUrl(longUrl);
+
+  if (!isValidUrl(longUrl)) {
+    throw new Error("Invalid URL");
+  }
 
   if (await isBlacklisted(longUrl)) {
     throw new Error("This domain is blacklisted");
