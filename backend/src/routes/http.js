@@ -5,6 +5,7 @@ import { config } from "../config/env.js";
 import { shortenUrl, resolveUrl } from "../services/url.service.js";
 import { db } from "../config/db.js";
 import geoip from "geoip-lite";
+import { parseUA } from "../utils/uaParser.js";
 
 const router = express.Router();
 
@@ -19,33 +20,6 @@ function getEmailFromAuthHeader(req) {
   } catch {
     return null;
   }
-}
-
-/* ---------------------- Robust UA parsing ---------------------- */
-function parseUserAgent(uaString = "") {
-  const ua = uaString.toLowerCase();
-
-  // OS
-  let os = "Unknown";
-  if (ua.includes("windows")) os = "Windows";
-  else if (ua.includes("mac")) os = "MacOS";
-  else if (ua.includes("linux")) os = "Linux";
-  else if (ua.includes("android")) os = "Android";
-  else if (ua.includes("iphone") || ua.includes("ipad")) os = "iOS";
-
-  // Browser (Edge fix)
-  let browser = "Unknown";
-  if (ua.includes("edg")) browser = "Edge";
-  else if (ua.includes("chrome")) browser = "Chrome";
-  else if (ua.includes("safari")) browser = "Safari";
-  else if (ua.includes("firefox")) browser = "Firefox";
-
-  // Device
-  let device = "desktop";
-  if (ua.includes("iphone") || ua.includes("android")) device = "mobile";
-  if (ua.includes("ipad") || ua.includes("tablet")) device = "tablet";
-
-  return { os, browser, device };
 }
 
 /* ---------------------- Accurate QR detection ---------------------- */
@@ -100,12 +74,16 @@ router.get("/:code", async (req, res) => {
     const longUrl = await resolveUrl(shortCode);
     if (!longUrl) return res.status(404).send("URL not found");
 
-    // Normalize IP
-    const ipRaw = req.headers["x-forwarded-for"]?.split(",")[0] || req.ip || "";
-    const ip = ipRaw.replace(/^::ffff:/, "");
+    // req.ip, not req.headers["x-forwarded-for"].
+    //
+    // Reading the header directly bypasses Express's trust proxy setting
+    // entirely, so any client could set it and choose the IP that gets hashed
+    // into the analytics row. Express already applies the configured trust
+    // policy to req.ip, which is the whole point of having the setting.
+    const ip = (req.ip || "").replace(/^::ffff:/, "");
 
     // UA parsing (fixed)
-    const ua = parseUserAgent(req.get("User-Agent") || "");
+    const ua = parseUA(req.get("User-Agent") || "");
 
     // GeoIP lookup (will be Unknown on localhost)
     const geo = geoip.lookup(ip);
