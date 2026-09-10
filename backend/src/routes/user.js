@@ -10,8 +10,10 @@ const router = express.Router();
 router.put("/avatar", requireAuth, async (req, res) => {
   try {
     const { avatarUrl } = req.body;
-    console.log("DEBUG avatar route - headers:", req.headers);
-    console.log("DEBUG avatar route - body:", req.body);
+    // Do not log req.headers here or anywhere else. It carries the
+    // Authorization bearer token, and the winston transport writes to
+    // rotating files kept for 14 days, so every call left a working
+    // credential on disk.
     if (!avatarUrl) return res.status(400).json({ error: "No avatar URL provided" });
 
     const updated = await updateAvatar(req.user.id, avatarUrl);

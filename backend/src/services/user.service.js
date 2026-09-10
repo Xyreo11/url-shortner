@@ -4,6 +4,7 @@ import { db } from "../config/db.js";
 
 import {
   findUserById,
+  findUserAuthById,
   updateUserAvatar,
   updateUserName,
   updateUserEmail,
@@ -49,7 +50,8 @@ export async function updateUserProfile(id, body) {
 // Change Password
 // ------------------------------------------------------
 export async function updatePassword(id, oldPassword, newPassword) {
-  const user = await findUserById(id);
+  // findUserAuthById, not findUserById: the latter no longer exposes the hash.
+  const user = await findUserAuthById(id);
   if (!user) return false;
 
   // Validate old password
