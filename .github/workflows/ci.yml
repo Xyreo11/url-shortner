@@ -1,0 +1,97 @@
+name: CI
+
+# The previous workflow triggered only on `dev` while the default branch is
+# `main`, and it had been deleted from main entirely. That is how a jest
+# config which could not start a single test survived in the repository.
+#
+# It also ended every test step with `|| echo "No backend tests"`, so the
+# pipeline was green whether the tests passed, failed, or never ran. Steps
+# here are allowed to fail the build, which is the entire point.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        # No service containers: the suite mocks Postgres and Redis. The test
+        # script invokes jest through node with --experimental-vm-modules,
+        # which works on Windows and here; the old `set NODE_OPTIONS=... &&
+        # jest` was cmd syntax and silently ran without the flag on Linux.
+        run: npm test
+
+      - name: Coverage
+        run: npm run test:coverage
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    needs: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        # The Dockerfile is at docker/Dockerfile.app, not at the context root.
+        # The previous workflow ran `docker build .` in backend/ and would
+        # have failed on every run had anything been watching.
+        run: docker build -f backend/docker/Dockerfile.app -t shortify-backend backend
+
+  schema:
+    name: Schema loads from a clean volume
+    runs-on: ubuntu-latest
+    needs: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres with the committed schema
+        run: |
+          docker run -d --name schema-check \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=shortifydb \
+            -v "$PWD/backend/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro" \
+            postgres:15
+          for i in $(seq 1 60); do
+            if docker exec schema-check pg_isready -U postgres -d shortifydb >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Assert the four tables exist
+        # Guards the claim that a clean clone runs. The repository previously
+        # shipped no schema at all: four tables were queried and nothing
+        # created them.
+        run: |
+          sleep 3
+          count=$(docker exec schema-check psql -U postgres -d shortifydb -tAc \
+            "SELECT count(*) FROM information_schema.tables
+             WHERE table_schema='public'
+               AND table_name IN ('urls','users','analytics','blacklist');")
+          echo "tables found: $count"
+          test "$count" = "4"

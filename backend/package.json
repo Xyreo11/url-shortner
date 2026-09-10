@@ -7,23 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules && jest --runInBand"
-  },
-  "jest": {
-    "testEnvironment": "node",
-    "transform": {},
-    "extensionsToTreatAsEsm": [
-      ".js"
-    ],
-    "moduleNameMapper": {
-      "^(\\.{1,2}/.*)\\.js$": "$1"
-    },
-    "testMatch": [
-      "**/?(*.)+(test).js"
-    ],
-    "clearMocks": true,
-    "collectCoverage": true,
-    "coverageDirectory": "coverage"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --coverage"
   },
   "keywords": [],
   "author": "Nikhil",
