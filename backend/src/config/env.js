@@ -84,6 +84,12 @@ export const config = {
   RATE_LIMIT_CREATE_MAX: int("RATE_LIMIT_CREATE_MAX", 10),
   RATE_LIMIT_CREATE_WINDOW_S: int("RATE_LIMIT_CREATE_WINDOW_S", 60),
 
+  // Auth was not rate limited at all. Both routes run bcrypt at cost 12, so
+  // an unauthenticated caller could pin a CPU core with a loop of login
+  // attempts, and nothing slowed down credential stuffing either.
+  RATE_LIMIT_AUTH_MAX: int("RATE_LIMIT_AUTH_MAX", 20),
+  RATE_LIMIT_AUTH_WINDOW_S: int("RATE_LIMIT_AUTH_WINDOW_S", 300),
+
   // Comma-separated allowlist. Previously cors({ origin: "*" }), which lets
   // any site on the internet call this API from a visitor's browser.
   CORS_ORIGINS: (process.env.CORS_ORIGINS || "http://localhost:5173,http://localhost:3000")

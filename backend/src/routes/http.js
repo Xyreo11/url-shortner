@@ -82,8 +82,8 @@ router.post("/shorten", async (req, res) => {
       shortCode,
     });
   } catch (err) {
-    console.error("❌ POST /shorten", err);
-    return res.status(400).json({ error: err.message });
+    console.error("[shorten]", err.message);
+    return res.status(err.status || 400).json({ error: err.message });
   }
 });
 

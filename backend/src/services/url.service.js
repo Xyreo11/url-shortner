@@ -20,7 +20,13 @@ export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
     config.RATE_LIMIT_CREATE_MAX,
     config.RATE_LIMIT_CREATE_WINDOW_S
   );
-  if (!allowed) throw new Error("Rate limit exceeded");
+  if (!allowed) {
+    // Carries its own status so the route does not report a throttled request
+    // as a 400 Bad Request, which tells the caller nothing useful.
+    const err = new Error("Rate limit exceeded");
+    err.status = 429;
+    throw err;
+  }
 
   if (typeof longUrl !== "string" || longUrl.trim() === "") {
     throw new Error("A URL is required");
