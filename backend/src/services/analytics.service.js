@@ -1,5 +1,6 @@
 // src/services/analytics.service.js
 import { db } from "../config/db.js";
+import { counters } from "../utils/metrics.js";
 import { redis } from "../config/redis.js";
 
 /**
@@ -255,24 +256,23 @@ export async function getBreakdowns({ range = "30d" } = {}) {
  * - error rate (needs error log table)
  */
 export async function getHealthMetrics() {
-  // Try to read counters from redis (non-blocking)
-  let cacheHitRate = null;
-  try {
-    const hits = parseInt(await redis.get("cache:hits") || "0", 10);
-    const misses = parseInt(await redis.get("cache:misses") || "0", 10);
-    const total = hits + misses;
-    cacheHitRate = total > 0 ? (hits / total) * 100 : null;
-  } catch (e) {
-    console.warn("Failed to read cache counters:", e.message || e);
-  }
-
-  // Placeholder values for redirect latency and error rate (you can instrument later)
-  const avgRedirectLatency = null;
-  const errorRate = null;
+  // Read from the in-process counters rather than from Redis.
+  //
+  // These used to be two awaited redis.get calls, fed by an awaited INCR on
+  // every single cache read. That put a whole extra Redis round trip on the
+  // hottest path in the system to maintain a number that nothing consumed in
+  // real time. The counters are now plain integers incremented in memory.
+  //
+  // The trade: per process, and reset on restart, where the Redis pair was
+  // shared and durable. A fleet-wide hit rate now comes from scraping
+  // /metrics and aggregating, which is the normal way round.
+  const hits = counters.l1Hits + counters.l2Hits;
+  const total = hits + counters.cacheMisses;
+  const cacheHitRate = total > 0 ? (hits / total) * 100 : null;
 
   return {
-    avgRedirectLatency,
+    avgRedirectLatency: null,
     cacheHitRate,
-    errorRate,
+    errorRate: null,
   };
 }

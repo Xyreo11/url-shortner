@@ -23,9 +23,16 @@ export async function findByLongUrl(longUrl, ownerEmail = null) {
   return res.rows[0];
 }
 
+/**
+ * Only the columns a caller actually uses.
+ *
+ * SELECT * dragged long_url, short_code, created_at, click_count,
+ * owner_email and id through the driver's row parser on the main thread for
+ * every cache miss, when the redirect path reads exactly one of them.
+ */
 export async function findByShortCode(code) {
   const res = await db.query(
-    "SELECT * FROM urls WHERE short_code = $1 LIMIT 1",
+    "SELECT short_code, long_url FROM urls WHERE short_code = $1 LIMIT 1",
     [code]
   );
   return res.rows[0];

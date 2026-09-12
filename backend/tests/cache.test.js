@@ -15,29 +15,44 @@ jest.unstable_mockModule("../src/config/redis.js", () => ({
 }));
 
 const { cacheGet, cacheSet } = await import("../src/utils/cache.js");
+const { counters } = await import("../src/utils/metrics.js");
 
 let errorSpy;
 beforeAll(() => {
   errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 });
 afterAll(() => errorSpy.mockRestore());
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  for (const k of Object.keys(counters)) counters[k] = 0;
+});
 
 describe("cacheGet", () => {
-  test("returns the value on a hit and counts the hit", async () => {
+  test("returns the value on a hit and counts it in process", async () => {
     mockRedis.get.mockResolvedValue("https://example.com/x");
-    mockRedis.incr.mockResolvedValue(1);
 
     await expect(cacheGet("short:abc")).resolves.toBe("https://example.com/x");
-    expect(mockRedis.incr).toHaveBeenCalledWith("cache:hits");
+    expect(counters.l2Hits).toBe(1);
   });
 
-  test("returns null on a miss and counts the miss", async () => {
+  test("returns null on a miss and counts it in process", async () => {
     mockRedis.get.mockResolvedValue(null);
-    mockRedis.incr.mockResolvedValue(1);
 
     await expect(cacheGet("short:nope")).resolves.toBeNull();
-    expect(mockRedis.incr).toHaveBeenCalledWith("cache:misses");
+    expect(counters.cacheMisses).toBe(1);
+  });
+
+  test("a cache read is ONE Redis command, not two", async () => {
+    // Hit and miss counting used to be an awaited INCR, so every cache read
+    // cost a second round trip: the instrumentation was as expensive as the
+    // thing it measured, on the hottest path in the system.
+    mockRedis.get.mockResolvedValue("https://example.com/x");
+
+    await cacheGet("short:abc");
+
+    expect(mockRedis.get).toHaveBeenCalledTimes(1);
+    expect(mockRedis.incr).not.toHaveBeenCalled();
+    expect(counters.redisCommands).toBe(1);
   });
 
   test("regression: a Redis failure resolves to null rather than throwing", async () => {

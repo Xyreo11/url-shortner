@@ -117,7 +117,11 @@ export async function resolveUrl(shortCode) {
   const data = await findByShortCode(shortCode);
   if (!data) return null;
 
-  await cacheSet(`short:${shortCode}`, data.long_url);
+  // Not awaited. The value is already in hand, so making the caller wait for
+  // a cache write it does not depend on added a third serialised round trip
+  // to every cache miss for no benefit. Failure is already swallowed inside
+  // cacheSet, and an unwritten entry is simply a future miss.
+  void cacheSet(`short:${shortCode}`, data.long_url);
 
   return data.long_url;
 }

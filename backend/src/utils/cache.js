@@ -18,18 +18,19 @@ export async function cacheGet(key) {
     counters.redisCommands += 1;
     const value = await redis.get(key);
 
+    // Hit and miss counting is now a single in-process integer increment.
+    //
+    // It used to be an awaited `INCR cache:hits`, which meant a SECOND Redis
+    // round trip on every cache read: the instrumentation cost as much as the
+    // thing it measured, and doubled the network work on the hottest path in
+    // the system to maintain a number nothing read in real time.
+    //
+    // The trade is that these counters are per process and reset on restart,
+    // where the Redis ones were shared and durable. For a cache hit rate that
+    // is the right trade; anything needing a fleet-wide figure should scrape
+    // /metrics and aggregate there, which is how this is normally done.
     if (value !== null) counters.l2Hits += 1;
     else counters.cacheMisses += 1;
-
-    // Instrumentation must never be able to break a read, so it gets its own
-    // guard. It is still awaited here; that round trip is dealt with
-    // separately as a performance change.
-    try {
-      counters.redisCommands += 1;
-      await redis.incr(value !== null ? "cache:hits" : "cache:misses");
-    } catch {
-      /* counters are best effort */
-    }
 
     return value;
   } catch (err) {
