@@ -1,0 +1,10 @@
+commit	label	redis_per_redirect	pg_per_redirect	cpu_us_per_redirect	loop_p99_ms	p50_ms	p95_ms	p99_ms	rps
+f72a90f	baseline (instrumented)	2	2	1103.74	23.265	5.97	20.21	50.49	363.7
+f83bd96	B1a remove console.log	2	2	1082.692	21.61	5.83	16.62	51.56	363.6
+05e5376	B1b sync waste	2	2	1037.398	21.561	6.59	10.20	50.70	363.6
+275fcbc	B2 direct 302	2	2	1001.45	21.676	6.21	13.45	52.64	363.7
+43a0101	B3 middleware scoping	2	2	859.307	21.905	5.76	8.64	28.46	363.6
+66f2124	B4 write-behind clicks	2	0.011	570.243	22.97	1.10	1.86	2.50	363.7
+2362243	B5 one redis cmd per read	1	0.011	425.707	24.052	0.77	1.43	1.67	363.7
+710a996	B7 near cache	0.435	0.011	335.883	24.56	0.51	1.52	1.75	363.7
+0df8684	B8 dashboard	0.431	0.011	347.583	24.117	0.51	1.52	1.77	363.7
