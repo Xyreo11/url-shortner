@@ -177,10 +177,32 @@ router.get("/:code", async (req, res) => {
     // path several hundred times a second. Request-level detail belongs in
     // the structured logger, behind a level, not on stdout unconditionally.
 
+    // Write the 302 directly rather than via res.redirect.
+    //
+    // res.redirect does a surprising amount for a bodyless response: it runs
+    // full Accept content negotiation through negotiator, sets Vary: Accept,
+    // picks a Content-Type, escapes the destination into an HTML or plain
+    // text body, measures that body with Buffer.byteLength and writes it. A
+    // 302 needs none of it. This is a CPU and syscall saving, not a bandwidth
+    // one: on loopback the bytes were never the constraint.
+    //
+    // The scheme guard below is why this is safe, and in fact safer than
+    // before. res.redirect would happily emit any stored string as a
+    // Location, including a javascript: URL. Validation now runs at write
+    // time, but rows created before validation existed are still in the
+    // table, so the read path refuses anything that is not http(s) rather
+    // than trusting what it finds.
+    if (!longUrl.startsWith("https://") && !longUrl.startsWith("http://")) {
+      counters.badDestinations += 1;
+      console.error("[redirect] refusing non-http destination for", shortCode);
+      return res.status(500).send("Internal server error");
+    }
+
     counters.redirects += 1;
-    return res.redirect(longUrl);
+    res.writeHead(302, { Location: longUrl, "Content-Length": "0" });
+    return res.end();
   } catch (err) {
-    console.error("❌ REDIRECT ERROR", err);
+    console.error("[redirect]", err.message);
     return res.status(500).send("Internal server error");
   }
 });

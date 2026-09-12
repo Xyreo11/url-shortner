@@ -62,6 +62,17 @@ describe("guards", () => {
     blacklist.isBlacklisted.mockResolvedValue(true);
     await expect(shortenUrl("https://bad.example.com", null, IP)).rejects.toThrow(/blacklisted/);
   });
+
+  test("stores the destination percent-encoded, so the redirect path is a passthrough", async () => {
+    // The redirect writes this value straight into a Location header. Encoding
+    // once at creation costs about a hundredth as much as encoding on every
+    // read, and it means a stored value needs no further processing.
+    await shortenUrl("https://a.example.com/a path?q=1 2", null, IP);
+
+    const stored = model.insertUrl.mock.calls[0][0];
+    expect(stored).toBe("https://a.example.com/a%20path?q=1%202");
+    expect(stored).not.toContain(" ");
+  });
 });
 
 describe("deduplication", () => {
@@ -76,10 +87,14 @@ describe("deduplication", () => {
   test("scopes the dedupe lookup and its cache key to the owner", async () => {
     // Without the owner scope, one user shortening a URL another had already
     // shortened was handed that other user's code.
+    //
+    // The trailing slash is the write-time URL normalisation: the stored form
+    // is percent-encoded and normalised once here so the redirect path can
+    // write it straight into a Location header without further work.
     await shortenUrl("https://a.example.com", null, IP, "alice@example.com");
 
     expect(model.findByLongUrl).toHaveBeenCalledWith(
-      "https://a.example.com",
+      "https://a.example.com/",
       "alice@example.com"
     );
     const dedupeKeys = cache.cacheGet.mock.calls.map((c) => c[0]);

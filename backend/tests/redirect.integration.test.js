@@ -140,3 +140,33 @@ describe("security headers", () => {
     expect(res.headers["x-powered-by"]).toBeUndefined();
   });
 });
+
+describe("the 302 is written directly, not via res.redirect", () => {
+  test("carries no body and no negotiated Content-Type", async () => {
+    // res.redirect runs Accept negotiation, sets Vary: Accept, picks a
+    // Content-Type and builds an HTML or plain-text body describing the
+    // redirect. None of that is needed, and skipping it removes the
+    // negotiator, an escapeHtml pass and two header writes per request.
+    stubDb({ urlRow: { short_code: "abc12345", long_url: TARGET } });
+
+    const res = await request(app).get("/abc12345");
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(TARGET);
+    expect(res.headers["content-length"]).toBe("0");
+    expect(res.headers["content-type"]).toBeUndefined();
+    expect(res.text).toBeFalsy();
+  });
+
+  test("refuses a stored destination that is not http or https", async () => {
+    // Validation now runs at write time, but rows created before it existed
+    // are still in the table. res.redirect would have emitted this as a
+    // Location header quite happily.
+    stubDb({ urlRow: { short_code: "legacy01", long_url: "javascript:alert(1)" } });
+
+    const res = await request(app).get("/legacy01");
+
+    expect(res.status).toBe(500);
+    expect(res.headers.location).toBeUndefined();
+  });
+});

@@ -46,6 +46,15 @@ export async function shortenUrl(longUrl, alias, ip, ownerEmail = null) {
     throw new Error("Invalid URL");
   }
 
+  // Normalise and percent-encode once, here, and store the encoded form.
+  //
+  // The redirect path writes this value straight into a Location header, so
+  // doing the encoding at write time means the read path is a pure
+  // passthrough. It also moves the cost from once per redirect to once per
+  // creation, which given the read/write ratio is roughly a hundredfold
+  // fewer times.
+  longUrl = new URL(longUrl).toString();
+
   if (await isBlacklisted(longUrl)) {
     throw new Error("This domain is blacklisted");
   }
