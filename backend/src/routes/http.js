@@ -5,6 +5,7 @@ import { config } from "../config/env.js";
 import { shortenUrl, resolveUrl } from "../services/url.service.js";
 import { db } from "../config/db.js";
 import geoip from "geoip-lite";
+import { createHash } from "node:crypto";
 import { parseUA } from "../utils/uaParser.js";
 import { counters } from "../utils/metrics.js";
 
@@ -23,21 +24,55 @@ function getEmailFromAuthHeader(req) {
   }
 }
 
-/* ---------------------- Accurate QR detection ---------------------- */
-function detectQR(req) {
-  const ua = (req.get("User-Agent") || "").toLowerCase();
-  const referer = req.get("Referer") || "";
+/* ---------------------- QR detection (heuristic) ---------------------- */
+/**
+ * Takes the already-lowercased user agent and the referer rather than the
+ * request, because the handler has read both headers by this point and the
+ * previous version read them again.
+ *
+ * Still a heuristic, and a weak one: privacy tools strip the referer too, so
+ * this misclassifies. The right design encodes the source as a query
+ * parameter in the QR'd URL so the server is told rather than guessing.
+ */
+function detectQR(uaLower, referer) {
+  if (uaLower.includes("qr") || uaLower.includes("scanner")) return true;
 
-  // True QR cases
-  if (ua.includes("qr") || ua.includes("scanner")) return true;
-
-  // Browsers NEVER send referrer when scanned via camera apps
+  // Camera apps send no referer, and are not one of the browsers.
   if (referer === "") {
-    if (!ua.includes("chrome") && !ua.includes("firefox") && !ua.includes("safari"))
-      return true; // camera app or scanner
+    return (
+      !uaLower.includes("chrome") &&
+      !uaLower.includes("firefox") &&
+      !uaLower.includes("safari")
+    );
   }
 
   return false;
+}
+
+/**
+ * geoip-lite never resolves a loopback or private address, so on any request
+ * from the same host or a local network it does a binary search over a ~50MB
+ * in-memory dataset to return null.
+ *
+ * Caveat worth stating whenever this is quoted: with a load generator on the
+ * same machine this skips 100% of benchmark traffic, and in production it
+ * would skip approximately none. It is a legitimate optimisation but it
+ * flatters this particular measurement, so it is reported separately rather
+ * than folded into the headline.
+ */
+function isLocalAddress(ip) {
+  return (
+    ip === "" ||
+    ip === "::1" ||
+    ip === "127.0.0.1" ||
+    ip.startsWith("127.") ||
+    ip.startsWith("10.") ||
+    ip.startsWith("192.168.") ||
+    ip.startsWith("169.254.") ||
+    ip.startsWith("fc") ||
+    ip.startsWith("fd") ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(ip)
+  );
 }
 
 /*
@@ -86,18 +121,24 @@ router.get("/:code", async (req, res) => {
     // policy to req.ip, which is the whole point of having the setting.
     const ip = (req.ip || "").replace(/^::ffff:/, "");
 
-    // UA parsing (fixed)
-    const ua = parseUA(req.get("User-Agent") || "");
+    // Read each header once and share the lowercased form. parseUA and
+    // detectQR both used to read and lowercase the user agent independently.
+    const uaRaw = req.get("User-Agent") || "";
+    const uaLower = uaRaw.toLowerCase();
+    const referer = req.get("Referer") || "";
 
-    // GeoIP lookup (will be Unknown on localhost)
-    const geo = geoip.lookup(ip);
-    const country = geo?.country || "Unknown";
+    const ua = parseUA(uaRaw);
 
-    // Proper QR detection
-    const isQR = detectQR(req);
+    // Skipped for local addresses, where the lookup can only return null.
+    const country = isLocalAddress(ip) ? "Unknown" : geoip.lookup(ip)?.country || "Unknown";
 
-    // Deterministic IP hash
-    const { createHash } = await import("crypto");
+    const isQR = detectQR(uaLower, referer);
+
+    // createHash is imported statically at the top of this file. It used to be
+    // `await import("crypto")` here, a dynamic import executed on every single
+    // request: the module is cached after the first call, but it still cost a
+    // module-registry lookup and forced the handler to yield to the microtask
+    // queue in the middle of the hot path.
     const ipHash = createHash("sha256")
       .update(ip + config.IP_SALT)
       .digest("hex");
@@ -117,7 +158,7 @@ router.get("/:code", async (req, res) => {
         ua.os,
         country,
         isQR,
-        req.get("Referer") || "",
+        referer,
       ]
     );
 

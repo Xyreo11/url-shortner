@@ -25,6 +25,11 @@ export function createApp() {
 
   // Was unconditionally true, which meant any client could set
   // X-Forwarded-For and pick its own rate-limit bucket and analytics IP hash.
+  // Express sets X-Powered-By and helmet then removes it again, so the
+  // header is paid for twice and shipped never. Disabling it at the source
+  // skips both.
+  app.disable("x-powered-by");
+
   app.set("trust proxy", config.TRUST_PROXY);
 
   // Content-Security-Policy is disabled: this service returns 302s and JSON,
