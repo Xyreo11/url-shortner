@@ -3,11 +3,11 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config/env.js";
 import { shortenUrl, resolveUrl } from "../services/url.service.js";
-import { db } from "../config/db.js";
 import geoip from "geoip-lite";
 import { createHash } from "node:crypto";
 import { parseUA } from "../utils/uaParser.js";
 import { counters } from "../utils/metrics.js";
+import { track } from "../services/clickBuffer.js";
 
 // Two routers, deliberately.
 //
@@ -151,30 +151,28 @@ redirectRouter.get("/:code", async (req, res) => {
       .update(ip + config.IP_SALT)
       .digest("hex");
 
-    // Insert analytics row
-    await db.query(
-      `
-      INSERT INTO analytics 
-      (short_code, ip_hash, device, browser, os, country, is_qr, referrer, timestamp)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-      `,
-      [
-        shortCode,
-        ipHash,
-        ua.device,
-        ua.browser,
-        ua.os,
-        country,
-        isQR,
-        referer,
-      ]
-    );
-
-    // Increment click count
-    await db.query(
-      `UPDATE urls SET click_count = click_count + 1 WHERE short_code = $1`,
-      [shortCode]
-    );
+    // Buffered, not written. This is a synchronous enqueue into an in-process
+    // buffer that a timer drains; it issues no query and never awaits.
+    //
+    // It used to be two awaited Postgres round trips before the response: an
+    // INSERT into a table with five secondary indexes, then an UPDATE that
+    // took a row lock, so concurrent clicks on one popular link serialised
+    // behind that lock while each waiter held a pool connection.
+    //
+    // The visitor gains nothing from waiting for either. The trade is that a
+    // crash loses up to one flush interval of clicks, which is acceptable for
+    // analytics and would not be for anything transactional.
+    track({
+      shortCode,
+      ipHash,
+      device: ua.device,
+      browser: ua.browser,
+      os: ua.os,
+      country,
+      isQR,
+      referrer: referer,
+      at: new Date(),
+    });
 
     // No per-request console.log here.
     //

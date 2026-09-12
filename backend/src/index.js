@@ -7,6 +7,7 @@ import { createApp } from "./app.js";
 import { config } from "./config/env.js";
 import { closeDb } from "./config/db.js";
 import { connectRedis, closeRedis } from "./config/redis.js";
+import { startClickFlusher, drainClickBuffer } from "./services/clickBuffer.js";
 
 const isCLI = process.argv.length > 2;
 
@@ -21,6 +22,9 @@ if (isCLI) {
   await connectRedis();
 
   const app = createApp();
+
+  // Drains the click buffer on a timer, off the request path.
+  startClickFlusher();
 
   const server = app.listen(config.PORT, () => {
     console.log(`[${config.APP_NAME}] listening on port ${config.PORT}`);
@@ -41,6 +45,8 @@ if (isCLI) {
 
     server.close(async () => {
       try {
+        // Buffered clicks must reach Postgres BEFORE the pool closes.
+        await drainClickBuffer();
         await closeRedis();
         await closeDb();
       } catch (err) {
@@ -48,6 +54,14 @@ if (isCLI) {
       }
       process.exit(0);
     });
+
+    // Release keep-alive sockets so server.close can actually fire. Without
+    // this it waits out keepAliveTimeout on every idle connection, which a
+    // load generator holds open, and the drain sits behind that wait until
+    // the force-exit timer below kills the process with clicks still buffered.
+    if (typeof server.closeIdleConnections === "function") {
+      server.closeIdleConnections();
+    }
 
     // Do not hang forever on a stuck connection.
     setTimeout(() => {
