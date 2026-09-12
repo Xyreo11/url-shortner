@@ -1,0 +1,42 @@
+phase:      baseline
+ref:        bench-baseline
+commit:     f72a90f95dd1624edf38a306055fa5890085edb6
+node:       v24.11.0
+k6:         k6.exe v2.2.0 (commit/00a9a1b7f5, go1.26.5, windows/amd64)
+postgres:   postgres:15
+redis:      redis:7
+os:         MINGW64_NT-10.0-26200 3.6.5-22c95533.x86_64
+measured:   2026-09-12T12:58:25Z
+
+--- pinned application configuration ---
+NODE_ENV=production
+APP_NAME=shortify
+PORT=3000
+BASE_URL=http://localhost:3000
+POSTGRES_URL=postgres://postgres:postgres@localhost:5433/shortifydb
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=bench-only-not-a-real-secret
+IP_SALT=bench-only-not-a-real-salt
+BCRYPT_ROUNDS=10
+PG_POOL_MAX=20
+UV_THREADPOOL_SIZE=8
+RATE_LIMIT_CREATE_MAX=1000000
+RATE_LIMIT_CREATE_WINDOW_S=60
+RATE_LIMIT_AUTH_MAX=1000000
+RATE_LIMIT_AUTH_WINDOW_S=300
+TRUST_PROXY=false
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+
+--- pinned harness configuration ---
+BENCH_POSTGRES_URL=postgres://***:***@localhost:5433/shortifydb
+BENCH_REDIS_URL=redis://localhost:6379
+BENCH_BASE_URL=http://localhost:3000
+BENCH_SEED_URLS=50000
+BENCH_HOT_URLS=10000
+BENCH_SEED_ANALYTICS=500000
+BENCH_SEED_USERS=10
+BENCH_USER_PASSWORD=benchpassword1
+BENCH_BCRYPT_ROUNDS=10
+BENCH_RATE=200
+BENCH_WARMUP_S=30
+BENCH_DURATION_S=180
