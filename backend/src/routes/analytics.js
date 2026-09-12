@@ -11,9 +11,13 @@ router.get("/user", authMiddleware, async (req, res) => {
     const email = req.user?.email;
     const { range } = req.query;
     if (!email) return res.status(401).json({ error: "Unauthorized" });
-    const data = await service.getUserStats(email, { range });
-    // pass ownerEmail so trend is scoped to this user's links
-    const trend = await service.getClickTrend({ range, granularity: "daily", ownerEmail: email, zeroFill: true });
+    // These two are independent, and awaiting them in sequence made the
+    // endpoint's latency the SUM of two query groups rather than the max.
+    // ownerEmail scopes the trend to this user's links.
+    const [data, trend] = await Promise.all([
+      service.getUserStats(email, { range }),
+      service.getClickTrend({ range, granularity: "daily", ownerEmail: email, zeroFill: true }),
+    ]);
     return res.json({ ...data, trend });
   } catch (err) {
     console.error("GET /analytics/user", err);

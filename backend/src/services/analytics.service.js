@@ -162,16 +162,19 @@ export async function getClickTrend({ range = "14d", granularity = "daily", owne
 
     if (!zeroFill) return rows;
 
-    // zero-fill hourly series between start and end
+    // Index once, then fill. This used to call rows.find inside the bucket
+    // loop, constructing a Date and calling toISOString for every row on
+    // every bucket, so the work grew as buckets times rows.
+    const byBucket = new Map(rows.map((row) => [new Date(row.time).toISOString(), row.clicks]));
+
     const out = [];
     const s = new Date(start);
     s.setMinutes(0, 0, 0);
     const e = new Date(end);
     e.setMinutes(0, 0, 0);
     for (let dt = new Date(s); dt <= e; dt.setHours(dt.getHours() + 1)) {
-      const iso = new Date(dt).toISOString();
-      const found = rows.find(r => new Date(r.time).toISOString() === iso);
-      out.push({ time: iso, clicks: found ? found.clicks : 0 });
+      const iso = dt.toISOString();
+      out.push({ time: iso, clicks: byBucket.get(iso) ?? 0 });
     }
     return out;
   } else {
@@ -189,16 +192,20 @@ export async function getClickTrend({ range = "14d", granularity = "daily", owne
 
     if (!zeroFill) return rows;
 
-    // zero-fill daily series between start and end
+    // Keyed on the day only, matching what the comparison did, but computed
+    // once per row instead of once per row for every bucket.
+    const byDay = new Map(
+      rows.map((row) => [new Date(row.time).toISOString().slice(0, 10), row.clicks])
+    );
+
     const out = [];
     const s = new Date(start);
     s.setUTCHours(0, 0, 0, 0);
     const e = new Date(end);
     e.setUTCHours(0, 0, 0, 0);
     for (let dt = new Date(s); dt <= e; dt.setUTCDate(dt.getUTCDate() + 1)) {
-      const iso = new Date(dt).toISOString();
-      const found = rows.find(r => new Date(r.time).toISOString().slice(0,10) === iso.slice(0,10));
-      out.push({ time: iso, clicks: found ? found.clicks : 0 });
+      const iso = dt.toISOString();
+      out.push({ time: iso, clicks: byDay.get(iso.slice(0, 10)) ?? 0 });
     }
     return out;
   }
