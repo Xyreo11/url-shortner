@@ -127,13 +127,14 @@ router.get("/:code", async (req, res) => {
       [shortCode]
     );
 
-    console.log("📊 CLICK", {
-      shortCode,
-      ip,
-      ua,
-      country,
-      isQR,
-    });
+    // No per-request console.log here.
+    //
+    // On Windows, process.stdout to a console is a SYNCHRONOUS blocking
+    // write, and this ran on every successful redirect with an object
+    // literal, so each one also paid util.inspect formatting. At a few
+    // hundred redirects per second that is a blocking syscall in the hot
+    // path several hundred times a second. Request-level detail belongs in
+    // the structured logger, behind a level, not on stdout unconditionally.
 
     counters.redirects += 1;
     return res.redirect(longUrl);
