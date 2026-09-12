@@ -77,15 +77,45 @@ export const baseOptions = {
   summaryTrendStats: ["avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
 };
 
+export const OPS = ["redirect_hit", "redirect_miss", "create", "analytics_dash", "login"];
+
+/**
+ * Per-endpoint sub-metrics.
+ *
+ * k6 only materialises a tagged sub-metric when a threshold names it. Without
+ * these, tagging every scenario with an `op` produces nothing at all: the
+ * saved results contain one blended figure and the per-endpoint numbers do
+ * not exist.
+ *
+ * That blended figure is unusable here. The workload is 93% redirect, 4%
+ * create, 2% dashboard, 1% login, so p95 is the top 5% of requests and p99
+ * the top 1%. Both sit entirely inside the login and dashboard populations:
+ * the blended p99 is bcrypt by construction and would read the same if the
+ * redirect handler did nothing at all.
+ *
+ * The bounds are deliberately unreachable. These exist to create the metric,
+ * never to pass or fail. run-matrix.sh runs under `set -euo pipefail` and k6
+ * exits non-zero on a crossed threshold, so a threshold that can fire is a
+ * threshold that can silently change which runs complete.
+ *
+ * Tagged on op AND phase together, or the warmup contaminates them.
+ */
+const perOpThresholds = {};
+for (const op of OPS) {
+  perOpThresholds[`http_req_duration{op:${op},phase:measure}`] = ["p(99)<100000"];
+  perOpThresholds[`http_reqs{op:${op},phase:measure}`] = ["count>=0"];
+}
+
 export const thresholds = {
   // Only the measurement phase counts. The warmup exists to let V8 reach
   // steady state and would otherwise drag the percentiles up.
   "http_req_duration{phase:measure}": ["p(95)<500", "p(99)<1000"],
   "http_req_failed{phase:measure}": ["rate<0.01"],
-  // Non-zero dropped iterations means the generator could not keep up with
-  // the arrival rate, which invalidates the run rather than describing the
-  // server. Checked explicitly in the summary.
+  // Non-zero dropped iterations means the run could not keep up with the
+  // offered rate, which invalidates it as a latency measurement rather than
+  // describing the server. Flagged explicitly in the summary.
   dropped_iterations: ["count<1"],
+  ...perOpThresholds,
 };
 
 // ---------------------------------------------------------------------------
@@ -179,13 +209,33 @@ function textSummary(data) {
     "  ---------------------------------------------------------------",
     `  requests        ${reqs?.count ?? 0} (${(reqs?.rate ?? 0).toFixed(1)}/s achieved)`,
     `  failed          ${((failed?.rate ?? 0) * 100).toFixed(3)}%`,
-    `  dropped iters   ${dropped}${dropped > 0 ? "   <-- RUN INVALID, generator could not keep up" : ""}`,
+    `  dropped iters   ${dropped}${dropped > 0 ? "   <-- RUN INVALID, could not sustain the offered rate" : ""}`,
     "",
-    `  p50             ${pct(data, "http_req_duration", "med")} ms`,
-    `  p95             ${pct(data, "http_req_duration", "p(95)")} ms`,
-    `  p99             ${pct(data, "http_req_duration", "p(99)")} ms`,
-    "  ---------------------------------------------------------------",
+    "  BLENDED (all endpoints)",
+    `  p50 ${pct(data, "http_req_duration{phase:measure}", "med")}   ` +
+      `p95 ${pct(data, "http_req_duration{phase:measure}", "p(95)")}   ` +
+      `p99 ${pct(data, "http_req_duration{phase:measure}", "p(99)")} ms`,
+    "  note: with a 93% redirect mix, p95 and p99 contain no redirects at all.",
+    "        The blended tail is login and dashboard. Use the table below.",
     "",
+    "  PER ENDPOINT (ms)",
+    "  endpoint          n        p50      p95      p99",
   ];
+
+  for (const op of OPS) {
+    const key = `http_req_duration{op:${op},phase:measure}`;
+    if (!data.metrics[key]) continue;
+    const n = data.metrics[`http_reqs{op:${op},phase:measure}`]?.values?.count ?? 0;
+    lines.push(
+      "  " +
+        op.padEnd(17) +
+        String(n).padEnd(9) +
+        pct(data, key, "med").padStart(7) +
+        pct(data, key, "p(95)").padStart(9) +
+        pct(data, key, "p(99)").padStart(9)
+    );
+  }
+
+  lines.push("  ---------------------------------------------------------------", "");
   return lines.join("\n");
 }

@@ -27,8 +27,23 @@ export const redis = createClient({
 // node-redis emits 'error' on connection trouble. An 'error' event with no
 // listener is an unhandled error and terminates the process, so this must
 // exist even though it only logs. The client reconnects on its own.
+//
+// Throttled: with the reconnect strategy below, an unreachable Redis emits an
+// error every few hundred milliseconds, and an unthrottled handler turns a
+// cache outage into gigabytes of logs.
+let lastErrorLoggedAt = 0;
+const ERROR_LOG_INTERVAL_MS = 30000;
+
 redis.on("error", (err) => {
-  console.error("[redis] client error:", err.message);
+  const now = Date.now();
+  if (now - lastErrorLoggedAt < ERROR_LOG_INTERVAL_MS) return;
+  lastErrorLoggedAt = now;
+  console.error("[redis] client error:", err.message || err.code || String(err));
+});
+
+redis.on("ready", () => {
+  lastErrorLoggedAt = 0;
+  console.log("[redis] connected");
 });
 
 let connectPromise = null;
@@ -42,11 +57,36 @@ let connectPromise = null;
  * the application is expected to serve from Postgres without it. /health
  * reports the real state.
  */
-export function connectRedis() {
+export function connectRedis({ timeoutMs = 3000 } = {}) {
   if (!connectPromise) {
-    connectPromise = redis.connect().catch((err) => {
-      console.error("[redis] initial connect failed:", err.message);
+    const attempt = redis.connect().catch((err) => {
+      console.error("[redis] initial connect failed:", err.message || err.code);
     });
+
+    // Bounded, and this bound is load-bearing.
+    //
+    // The reconnect strategy below never gives up, which is right for a cache
+    // but means redis.connect() does not REJECT when Redis is simply absent.
+    // It never settles at all. Awaiting it unbounded meant the process hung
+    // before app.listen and the service could not start without Redis --
+    // exactly the dependency the cache-aside fallback exists to avoid.
+    // Measured: with Redis stopped, the app printed connection errors forever
+    // and never bound its port.
+    //
+    // Now startup proceeds, the client keeps reconnecting in the background,
+    // and /health reports the real state.
+    connectPromise = Promise.race([
+      attempt,
+      new Promise((resolve) => {
+        const t = setTimeout(() => {
+          console.warn(
+            `[redis] not ready after ${timeoutMs}ms, starting anyway and serving from Postgres`
+          );
+          resolve();
+        }, timeoutMs);
+        t.unref();
+      }),
+    ]);
   }
   return connectPromise;
 }

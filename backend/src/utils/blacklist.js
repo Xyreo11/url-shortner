@@ -1,5 +1,6 @@
 import { db } from "../config/db.js";
 import { redis } from "../config/redis.js";
+import { counters } from "./metrics.js";
 import { config } from "../config/env.js";
 import { URL } from "url";
 
@@ -26,6 +27,7 @@ export async function isBlacklisted(url) {
 
   // 1. Cache. A Redis failure here is not fatal: fall through to Postgres.
   try {
+    counters.redisCommands += 1;
     const cached = await redis.get(key);
     if (cached !== null) return cached === "1";
   } catch (err) {

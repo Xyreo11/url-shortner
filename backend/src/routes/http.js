@@ -6,6 +6,7 @@ import { shortenUrl, resolveUrl } from "../services/url.service.js";
 import { db } from "../config/db.js";
 import geoip from "geoip-lite";
 import { parseUA } from "../utils/uaParser.js";
+import { counters } from "../utils/metrics.js";
 
 const router = express.Router();
 
@@ -72,7 +73,10 @@ router.get("/:code", async (req, res) => {
 
     // Resolve URL
     const longUrl = await resolveUrl(shortCode);
-    if (!longUrl) return res.status(404).send("URL not found");
+    if (!longUrl) {
+      counters.redirectsNotFound += 1;
+      return res.status(404).send("URL not found");
+    }
 
     // req.ip, not req.headers["x-forwarded-for"].
     //
@@ -131,6 +135,7 @@ router.get("/:code", async (req, res) => {
       isQR,
     });
 
+    counters.redirects += 1;
     return res.redirect(longUrl);
   } catch (err) {
     console.error("❌ REDIRECT ERROR", err);

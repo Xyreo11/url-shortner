@@ -18,6 +18,7 @@ import { config } from "./config/env.js";
 import { db } from "./config/db.js";
 import { redis } from "./config/redis.js";
 import { logRequests } from "./middleware/requestLogger.js";
+import { snapshot, resetMetrics } from "./utils/metrics.js";
 
 export function createApp() {
   const app = express();
@@ -81,6 +82,23 @@ export function createApp() {
       uptimeSeconds: Math.round(process.uptime()),
       checks,
     });
+  });
+
+  // Like /health, this must come before the catch-all below or "metrics" is
+  // parsed as a short code.
+  //
+  // Counters and gauges only, scraped at run start and run end. Nothing here
+  // accumulates per request, so it costs one extra entry in the router chain
+  // and nothing else. Present in both benchmark phases by design.
+  app.get("/metrics", (req, res) => {
+    res.json(snapshot());
+  });
+
+  // Zeroes the counters so a single run can be measured in isolation.
+  // Benchmark-only; it would be gated behind auth in anything real.
+  app.post("/metrics/reset", (req, res) => {
+    resetMetrics();
+    res.json({ reset: true });
   });
 
   // Specific prefixes first.

@@ -1,4 +1,5 @@
 import { redis } from "../config/redis.js";
+import { counters } from "./metrics.js";
 
 const DEFAULT_TTL_S = 3600;
 
@@ -14,12 +15,17 @@ const DEFAULT_TTL_S = 3600;
  */
 export async function cacheGet(key) {
   try {
+    counters.redisCommands += 1;
     const value = await redis.get(key);
+
+    if (value !== null) counters.l2Hits += 1;
+    else counters.cacheMisses += 1;
 
     // Instrumentation must never be able to break a read, so it gets its own
     // guard. It is still awaited here; that round trip is dealt with
     // separately as a performance change.
     try {
+      counters.redisCommands += 1;
       await redis.incr(value !== null ? "cache:hits" : "cache:misses");
     } catch {
       /* counters are best effort */
@@ -39,6 +45,7 @@ export async function cacheGet(key) {
  */
 export async function cacheSet(key, value, ttlSeconds = DEFAULT_TTL_S) {
   try {
+    counters.redisCommands += 1;
     await redis.set(key, value, { EX: ttlSeconds });
   } catch (err) {
     console.error("[cache] write failed:", err.message);

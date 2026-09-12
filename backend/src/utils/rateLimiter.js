@@ -1,4 +1,5 @@
 import { redis } from "../config/redis.js";
+import { counters } from "./metrics.js";
 
 /**
  * Sliding-window rate limit. Returns true when the request is allowed.
@@ -28,6 +29,7 @@ export async function rateLimit(key, limit, windowSeconds) {
   const windowStart = now - windowSeconds * 1000;
 
   try {
+    counters.redisCommands += 1;
     const results = await redis
       .multi()
       .zRemRangeByScore(key, 0, windowStart)

@@ -52,11 +52,22 @@ try {
     [bench.SEED_ANALYTICS, bench.HOT_URLS]
   );
 
-  // 4. Redis, wholesale. Rate-limit keys, cache entries and counters all have
+  // 4. Planner statistics. TRUNCATE + bulk insert leaves the table with no
+  //    fresh stats, so the dashboard queries run against stale estimates and
+  //    autovacuum fires at an unpredictable point, changing the query plan
+  //    partway through a measurement. ANALYZE removes that nondeterminism.
+  //    VACUUM reclaims the rows the DELETE above left behind, which otherwise
+  //    accumulate across the fourteen resets in a full matrix.
+  await db.query("ANALYZE analytics");
+  await db.query("ANALYZE urls");
+  await db.query("VACUUM urls");
+  await db.query("CHECKPOINT");
+
+  // 5. Redis, wholesale. Rate-limit keys, cache entries and counters all have
   //    to go, or the next run starts partly throttled or partly warm.
   await redis.flushDb();
 
-  // 5. Assert. A run that starts from the wrong state produces a number that
+  // 6. Assert. A run that starts from the wrong state produces a number that
   //    looks fine and means nothing.
   const { rows: u } = await db.query(`SELECT count(*)::int AS n FROM urls`);
   const { rows: a } = await db.query(`SELECT count(*)::int AS n FROM analytics`);
