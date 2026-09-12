@@ -9,7 +9,13 @@ import { createHash } from "node:crypto";
 import { parseUA } from "../utils/uaParser.js";
 import { counters } from "../utils/metrics.js";
 
-const router = express.Router();
+// Two routers, deliberately.
+//
+// /shorten is a JSON API call from a browser: it needs a body parser, CORS
+// and request logging. The redirect is a bare navigation that needs none of
+// them, and mounting them globally meant every redirect paid for all three.
+export const shortenRouter = express.Router();
+export const redirectRouter = express.Router();
 
 /* ---------------------- Extract email from token ---------------------- */
 function getEmailFromAuthHeader(req) {
@@ -80,7 +86,7 @@ function isLocalAddress(ip) {
 | POST /shorten
 |-------------------------------------------------------------------------- 
 */
-router.post("/shorten", async (req, res) => {
+shortenRouter.post("/", async (req, res) => {
   try {
     const { url, alias } = req.body;
     const ownerEmail = getEmailFromAuthHeader(req);
@@ -102,7 +108,7 @@ router.post("/shorten", async (req, res) => {
 | GET /:code  → Redirect + Track Analytics
 |-------------------------------------------------------------------------- 
 */
-router.get("/:code", async (req, res) => {
+redirectRouter.get("/:code", async (req, res) => {
   try {
     const shortCode = req.params.code;
 
@@ -110,6 +116,8 @@ router.get("/:code", async (req, res) => {
     const longUrl = await resolveUrl(shortCode);
     if (!longUrl) {
       counters.redirectsNotFound += 1;
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Referrer-Policy", "no-referrer");
       return res.status(404).send("URL not found");
     }
 
@@ -199,7 +207,18 @@ router.get("/:code", async (req, res) => {
     }
 
     counters.redirects += 1;
-    res.writeHead(302, { Location: longUrl, "Content-Length": "0" });
+    // The two headers a bodyless 302 actually benefits from, folded into the
+    // single writeHead so they cost nothing extra. helmet would have run
+    // thirteen middlewares and about a dozen setHeader calls to produce these
+    // plus ten others that are inert here: frame options and XSS protection
+    // mean nothing without a body, the cross-origin policies mean nothing
+    // without a document, and HSTS is inert over plain http.
+    res.writeHead(302, {
+      Location: longUrl,
+      "Content-Length": "0",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    });
     return res.end();
   } catch (err) {
     console.error("[redirect]", err.message);
@@ -207,4 +226,4 @@ router.get("/:code", async (req, res) => {
   }
 });
 
-export default router;
+export default redirectRouter;

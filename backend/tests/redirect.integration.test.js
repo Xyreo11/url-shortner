@@ -170,3 +170,64 @@ describe("the 302 is written directly, not via res.redirect", () => {
     expect(res.headers.location).toBeUndefined();
   });
 });
+
+describe("the redirect path carries no API middleware", () => {
+  test("no CORS headers on a redirect, which no browser treats as cross-origin", async () => {
+    // The CORS delegate used to run on every redirect and set Vary: Origin
+    // and Access-Control-Allow-Credentials on a plain navigation response.
+    stubDb({ urlRow: { short_code: "abc12345", long_url: TARGET } });
+
+    const res = await request(app).get("/abc12345");
+
+    expect(res.headers["access-control-allow-credentials"]).toBeUndefined();
+    expect(res.headers.vary).toBeUndefined();
+  });
+
+  test("but still sets the two headers that matter on a bodyless 302", async () => {
+    // helmet is off this path, so these are written by hand inside the single
+    // writeHead. The ones dropped are inert here: frame options and XSS
+    // protection need a body, the cross-origin policies need a document, and
+    // HSTS is inert over plain http.
+    stubDb({ urlRow: { short_code: "abc12345", long_url: TARGET } });
+
+    const res = await request(app).get("/abc12345");
+
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["referrer-policy"]).toBe("no-referrer");
+  });
+
+  test("the API routes still get the full stack", async () => {
+    stubDb({ urlRow: null });
+
+    const res = await request(app).get("/health").set("Origin", "http://localhost:5173");
+
+    expect(res.headers["strict-transport-security"]).toBeDefined();
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  test("POST /shorten still parses a JSON body after being split out", async () => {
+    // It moved off the redirect router so it could keep the body parser that
+    // the redirect no longer needs. If the split were wrong, req.body would
+    // be undefined and this would fail.
+    mockRedis.get.mockResolvedValue(null);
+    mockDb.query.mockImplementation((sql) => {
+      if (/INSERT INTO urls/i.test(sql)) return Promise.resolve({ rows: [{ short_code: "newcode1" }] });
+      return Promise.resolve({ rows: [] });
+    });
+    mockRedis.multi.mockReturnValue({
+      zRemRangeByScore: function () { return this; },
+      zAdd: function () { return this; },
+      zCard: function () { return this; },
+      expire: function () { return this; },
+      exec: () => Promise.resolve([0, 1, 1, 1]),
+    });
+
+    const res = await request(app)
+      .post("/shorten")
+      .send({ url: "https://example.com/target" });
+
+    expect([200, 400]).toContain(res.status);
+    expect(res.body).toBeDefined();
+    expect(res.status).toBe(200);
+  });
+});
