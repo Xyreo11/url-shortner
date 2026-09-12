@@ -8,6 +8,7 @@ import { config } from "./config/env.js";
 import { closeDb } from "./config/db.js";
 import { connectRedis, closeRedis } from "./config/redis.js";
 import { startClickFlusher, drainClickBuffer } from "./services/clickBuffer.js";
+import { startNearCacheRotation } from "./utils/nearCache.js";
 
 const isCLI = process.argv.length > 2;
 
@@ -25,6 +26,7 @@ if (isCLI) {
 
   // Drains the click buffer on a timer, off the request path.
   startClickFlusher();
+  startNearCacheRotation();
 
   const server = app.listen(config.PORT, () => {
     console.log(`[${config.APP_NAME}] listening on port ${config.PORT}`);

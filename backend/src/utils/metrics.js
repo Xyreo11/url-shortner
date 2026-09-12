@@ -13,6 +13,7 @@
 // four-minute sweep, and a reviewer can verify it from the source.
 
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { nearCacheStats } from "./nearCache.js";
 
 // 20ms resolution. The 10ms default is fine and 1ms would fire a timer a
 // thousand times a second for no extra insight at these latencies.
@@ -86,6 +87,8 @@ export function snapshot() {
 
     // waitingCount above zero means requests are queueing for a connection,
     // which is the pool acting as a throughput ceiling.
+    nearCache: nearCacheStats(),
+
     pool: pool
       ? { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
       : null,

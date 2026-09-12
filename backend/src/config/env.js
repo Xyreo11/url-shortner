@@ -111,4 +111,14 @@ export const config = {
   // OneDrive folder; a per-request file write there means the sync client
   // interferes with any measurement.
   LOG_DIR: process.env.LOG_DIR || "logs",
+
+  // In-process cache in front of Redis. Sized by entry count rather than
+  // bytes: ten thousand short-code entries is roughly two megabytes.
+  //
+  // The TTL is not required for correctness today, because nothing mutates a
+  // short code once created. It bounds the blast radius for when a delete or
+  // edit endpoint is added, at which point this cache also needs an explicit
+  // cross-instance invalidation channel that does not yet exist.
+  NEAR_CACHE_MAX_ENTRIES: int("NEAR_CACHE_MAX_ENTRIES", 10000),
+  NEAR_CACHE_TTL_S: int("NEAR_CACHE_TTL_S", 60),
 };

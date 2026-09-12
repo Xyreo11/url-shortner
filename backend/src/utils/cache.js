@@ -1,5 +1,6 @@
 import { redis } from "../config/redis.js";
 import { counters } from "./metrics.js";
+import { nearGet, nearSet } from "./nearCache.js";
 
 const DEFAULT_TTL_S = 3600;
 
@@ -14,6 +15,12 @@ const DEFAULT_TTL_S = 3600;
  * not availability.
  */
 export async function cacheGet(key) {
+  // L1 first. A hit here completes with no network call at all, which is the
+  // whole point: after the write path and the instrumentation round trip were
+  // removed, this single Redis GET was all that remained on a hot redirect.
+  const local = nearGet(key);
+  if (local !== undefined) return local;
+
   try {
     counters.redisCommands += 1;
     const value = await redis.get(key);
@@ -29,8 +36,12 @@ export async function cacheGet(key) {
     // where the Redis ones were shared and durable. For a cache hit rate that
     // is the right trade; anything needing a fleet-wide figure should scrape
     // /metrics and aggregate there, which is how this is normally done.
-    if (value !== null) counters.l2Hits += 1;
-    else counters.cacheMisses += 1;
+    if (value !== null) {
+      counters.l2Hits += 1;
+      nearSet(key, value);
+    } else {
+      counters.cacheMisses += 1;
+    }
 
     return value;
   } catch (err) {
@@ -45,6 +56,10 @@ export async function cacheGet(key) {
  * error worth failing the request over.
  */
 export async function cacheSet(key, value, ttlSeconds = DEFAULT_TTL_S) {
+  // Populate L1 too, so a value just written is servable without a network
+  // call on the very next read.
+  nearSet(key, value);
+
   try {
     counters.redisCommands += 1;
     await redis.set(key, value, { EX: ttlSeconds });

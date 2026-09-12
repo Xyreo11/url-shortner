@@ -25,6 +25,7 @@ jest.unstable_mockModule("../src/config/redis.js", () => ({
 }));
 
 const request = (await import("supertest")).default;
+const { _clearNearCache } = await import("../src/utils/nearCache.js");
 const { createApp } = await import("../src/app.js");
 
 const app = createApp();
@@ -37,6 +38,9 @@ beforeAll(() => {
 afterAll(() => errorSpy.mockRestore());
 
 beforeEach(() => {
+  // The L1 cache is module state and would otherwise leak between tests,
+  // masking the Redis calls each case is asserting on.
+  _clearNearCache();
   jest.clearAllMocks();
   mockRedis.get.mockResolvedValue(null);
   mockRedis.set.mockResolvedValue("OK");
